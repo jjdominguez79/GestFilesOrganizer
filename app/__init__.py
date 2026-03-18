@@ -1,0 +1,1 @@
+"""GestFilesOrganizer application package."""
