@@ -35,11 +35,13 @@ from app.ui.worker import ProcessingWorker
 from app.utils.logging_utils import LogBuffer
 
 
-STATUS_LABELS = {
+BASE_STATUS_LABELS = {
     "pending": "Pendiente",
-    "processing": "En proceso",
+    "selected": "Seleccionado",
+    "processing": "Procesando",
     "processed": "Procesado",
     "error": "Error",
+    "idle": "Sin pendientes",
 }
 
 
@@ -51,6 +53,7 @@ class MainWindow(QMainWindow):
         self.log_buffer = LogBuffer()
         self.scan_results: list[FolderScanResult] = []
         self.client_item_map: dict[str, QTreeWidgetItem] = {}
+        self.client_states: dict[str, str] = {}
         self.worker: ProcessingWorker | None = None
 
         self.setWindowTitle(
@@ -62,277 +65,348 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setObjectName("AppShell")
         self.setCentralWidget(central)
-        root_layout = QHBoxLayout(central)
-        root_layout.setContentsMargins(18, 18, 18, 18)
-        root_layout.setSpacing(18)
+        root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(20, 20, 20, 20)
+        root_layout.setSpacing(16)
 
-        root_layout.addWidget(self._build_sidebar(), 0)
-        root_layout.addWidget(self._build_content(), 1)
+        root_layout.addWidget(self._build_hero())
+        root_layout.addLayout(self._build_metrics_row())
 
-    def _build_sidebar(self) -> QWidget:
-        sidebar = QFrame()
-        sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(300)
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(16)
+        workspace_splitter = QSplitter(Qt.Horizontal)
+        workspace_splitter.setChildrenCollapsible(False)
+        workspace_splitter.addWidget(self._build_workspace_panel())
+        workspace_splitter.addWidget(self._build_execution_panel())
+        workspace_splitter.setSizes([980, 520])
+        root_layout.addWidget(workspace_splitter, 1)
 
-        brand = QFrame()
-        brand.setObjectName("BrandBlock")
-        brand_layout = QVBoxLayout(brand)
-        brand_layout.setContentsMargins(18, 18, 18, 18)
-        brand_layout.setSpacing(10)
+    def _build_hero(self) -> QWidget:
+        hero = QFrame()
+        hero.setObjectName("HeroCard")
+        layout = QHBoxLayout(hero)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(22)
 
-        logo = QLabel("a3")
-        logo.setObjectName("BrandLogo")
+        logo = QLabel("GF")
+        logo.setObjectName("HeroLogo")
         logo.setAlignment(Qt.AlignCenter)
-        logo.setFixedSize(72, 48)
-        brand_layout.addWidget(logo, 0, Qt.AlignLeft)
+        logo.setFixedSize(74, 74)
+        layout.addWidget(logo, 0, Qt.AlignTop)
 
-        pill = QLabel(self.settings.branding.suite_name)
-        pill.setObjectName("BrandPill")
-        pill.setAlignment(Qt.AlignCenter)
-        brand_layout.addWidget(pill, 0, Qt.AlignLeft)
+        text_column = QVBoxLayout()
+        text_column.setSpacing(6)
 
-        brand_owner = QLabel(self.settings.branding.owner_name)
-        brand_owner.setObjectName("BrandOwner")
-        brand_layout.addWidget(brand_owner)
+        suite = QLabel(self.settings.branding.owner_name)
+        suite.setObjectName("HeroEyebrow")
+        text_column.addWidget(suite)
 
-        brand_title = QLabel(self.settings.branding.product_name)
-        brand_title.setObjectName("BrandProduct")
-        brand_layout.addWidget(brand_title)
+        title = QLabel(self.settings.branding.product_name)
+        title.setObjectName("HeroTitle")
+        text_column.addWidget(title)
 
-        brand_subtitle = QLabel(self.settings.branding.tagline)
-        brand_subtitle.setObjectName("BrandTagline")
-        brand_subtitle.setWordWrap(True)
-        brand_layout.addWidget(brand_subtitle)
+        subtitle = QLabel(
+            "Organización documental, trazabilidad de fecha fiscal y control operativo para despacho profesional."
+        )
+        subtitle.setObjectName("HeroSubtitle")
+        subtitle.setWordWrap(True)
+        text_column.addWidget(subtitle)
 
-        brand_description = QLabel(self.settings.branding.description)
-        brand_description.setObjectName("BrandTagline")
-        brand_description.setWordWrap(True)
-        brand_layout.addWidget(brand_description)
+        badges = QHBoxLayout()
+        badges.setSpacing(10)
+        for label in ("Panel de clientes", "Clasificación por año/mes", "Auditoría de fecha"):
+            chip = QLabel(label)
+            chip.setObjectName("HeroChip")
+            badges.addWidget(chip)
+        badges.addStretch(1)
+        text_column.addLayout(badges)
+        layout.addLayout(text_column, 1)
 
-        brand_info_card = QFrame()
-        brand_info_card.setObjectName("BrandInfoCard")
-        info_layout = QGridLayout(brand_info_card)
-        info_layout.setContentsMargins(12, 12, 12, 12)
-        info_layout.setHorizontalSpacing(10)
-        info_layout.setVerticalSpacing(8)
+        side = QFrame()
+        side.setObjectName("HeroSideCard")
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(16, 14, 16, 14)
+        side_layout.setSpacing(8)
+        side_layout.addWidget(self._build_side_metric("Canal", "Despacho / Backoffice"))
+        side_layout.addWidget(self._build_side_metric("OCR", "Opcional y limitado"))
+        side_layout.addWidget(self._build_side_metric("Reporte", "Excel por cliente"))
+        layout.addWidget(side, 0, Qt.AlignTop)
+        return hero
 
-        phone_title = QLabel("Atención comercial")
-        phone_title.setObjectName("InfoTitle")
-        phone_value = QLabel(self.settings.branding.support_phone)
-        phone_value.setObjectName("InfoValue")
+    def _build_side_metric(self, title: str, value: str) -> QWidget:
+        block = QWidget()
+        layout = QVBoxLayout(block)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        title_label = QLabel(title)
+        title_label.setObjectName("MiniMetricTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("MiniMetricValue")
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        return block
 
-        portal_title = QLabel("Soporte")
-        portal_title.setObjectName("InfoTitle")
-        portal_value = QLabel(self.settings.branding.support_portal)
-        portal_value.setObjectName("InfoValue")
-        portal_value.setWordWrap(True)
+    def _build_metrics_row(self):
+        layout = QHBoxLayout()
+        layout.setSpacing(14)
+        self.metric_clients = self._build_metric_card("Clientes", "0", "carpetas cargadas")
+        self.metric_pending = self._build_metric_card("Pendientes", "0", "archivos por ordenar")
+        self.metric_selected = self._build_metric_card("Selección", "0", "clientes listos")
+        self.metric_manual = self._build_metric_card("Revisión", "0", "fechas a revisar")
+        for card in (
+            self.metric_clients["frame"],
+            self.metric_pending["frame"],
+            self.metric_selected["frame"],
+            self.metric_manual["frame"],
+        ):
+            layout.addWidget(card, 1)
+        return layout
 
-        web_title = QLabel("Web")
-        web_title.setObjectName("InfoTitle")
-        web_value = QLabel(self.settings.branding.website)
-        web_value.setObjectName("InfoValue")
-        web_value.setWordWrap(True)
+    def _build_metric_card(self, title: str, value: str, subtitle: str) -> dict[str, QWidget]:
+        frame = QFrame()
+        frame.setObjectName("MetricCard")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(4)
+        title_label = QLabel(title)
+        title_label.setObjectName("MetricTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("MetricValue")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("MetricSubtitle")
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        layout.addWidget(subtitle_label)
+        return {"frame": frame, "value": value_label}
 
-        info_layout.addWidget(phone_title, 0, 0)
-        info_layout.addWidget(phone_value, 1, 0)
-        info_layout.addWidget(portal_title, 0, 1)
-        info_layout.addWidget(portal_value, 1, 1)
-        info_layout.addWidget(web_title, 2, 0, 1, 2)
-        info_layout.addWidget(web_value, 3, 0, 1, 2)
-        brand_layout.addWidget(brand_info_card)
-        layout.addWidget(brand)
-
-        summary = QFrame()
-        summary.setObjectName("SummaryCard")
-        summary_layout = QVBoxLayout(summary)
-        summary_layout.setContentsMargins(16, 16, 16, 16)
-        summary_layout.setSpacing(10)
-
-        title = QLabel("Resumen de operación")
-        title.setObjectName("SectionTitle")
-        summary_layout.addWidget(title)
-
-        self.summary_clients = QLabel("Clientes cargados: 0")
-        self.summary_clients.setObjectName("MutedLabel")
-        summary_layout.addWidget(self.summary_clients)
-
-        self.summary_pending = QLabel("Pendientes: 0")
-        self.summary_pending.setObjectName("MutedLabel")
-        summary_layout.addWidget(self.summary_pending)
-
-        self.summary_selected = QLabel("Seleccionados: 0")
-        self.summary_selected.setObjectName("MutedLabel")
-        summary_layout.addWidget(self.summary_selected)
-
-        self.summary_status = QLabel("Estado: listo")
-        self.summary_status.setObjectName("MutedLabel")
-        summary_layout.addWidget(self.summary_status)
-        layout.addWidget(summary)
-
-        options = QFrame()
-        options.setObjectName("SummaryCard")
-        options_layout = QVBoxLayout(options)
-        options_layout.setContentsMargins(16, 16, 16, 16)
-        options_layout.setSpacing(12)
-
-        options_title = QLabel("Opciones")
-        options_title.setObjectName("SectionTitle")
-        options_layout.addWidget(options_title)
-
-        self.move_files_checkbox = QCheckBox("Mover archivos en lugar de copiar")
-        self.move_files_checkbox.setChecked(True)
-        options_layout.addWidget(self.move_files_checkbox)
-
-        self.modified_date_checkbox = QCheckBox("Usar fecha de modificación como fallback")
-        self.modified_date_checkbox.setChecked(True)
-        options_layout.addWidget(self.modified_date_checkbox)
-
-        self.auto_select_checkbox = QCheckBox("Marcar automáticamente carpetas con '_'")
-        self.auto_select_checkbox.setChecked(True)
-        options_layout.addWidget(self.auto_select_checkbox)
-
-        self.remove_marker_checkbox = QCheckBox("Quitar _ del nombre al finalizar")
-        self.remove_marker_checkbox.setChecked(True)
-        options_layout.addWidget(self.remove_marker_checkbox)
-        layout.addWidget(options)
-
-        layout.addStretch(1)
-        return sidebar
-
-    def _build_content(self) -> QWidget:
-        container = QWidget()
-        layout = QVBoxLayout(container)
+    def _build_workspace_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
+        layout.addWidget(self._build_controls_panel())
+        layout.addWidget(self._build_clients_panel(), 1)
+        return panel
 
-        layout.addWidget(self._build_top_card())
-        layout.addWidget(self._build_progress_card())
-
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self._build_clients_panel())
-        splitter.addWidget(self._build_log_panel())
-        splitter.setSizes([720, 540])
-        layout.addWidget(splitter, 1)
-        return container
-
-    def _build_top_card(self) -> QWidget:
+    def _build_controls_panel(self) -> QWidget:
         card = QFrame()
-        card.setObjectName("TopCard")
-        layout = QGridLayout(card)
+        card.setObjectName("PanelCard")
+        layout = QVBoxLayout(card)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(10)
+        layout.setSpacing(16)
 
-        headline = QLabel("Panel principal")
-        headline.setObjectName("Headline")
-        layout.addWidget(headline, 0, 0, 1, 4)
+        header_row = QHBoxLayout()
+        title = QLabel("Centro de operaciones")
+        title.setObjectName("SectionTitle")
+        header_row.addWidget(title)
+        header_row.addStretch(1)
+        self.summary_status = QLabel("Listo")
+        self.summary_status.setObjectName("StatusBadgeNeutral")
+        header_row.addWidget(self.summary_status)
+        layout.addLayout(header_row)
 
-        subtitle = QLabel("Selecciona la carpeta raíz, escanea clientes y ejecuta el procesamiento con control visual.")
-        subtitle.setObjectName("MutedLabel")
-        layout.addWidget(subtitle, 1, 0, 1, 4)
+        description = QLabel(
+            "Selecciona la carpeta raíz, escanea clientes y lanza el proceso con filtros y opciones de archivo."
+        )
+        description.setObjectName("MutedLabel")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        root_grid = QGridLayout()
+        root_grid.setHorizontalSpacing(10)
+        root_grid.setVerticalSpacing(10)
+
+        root_label = QLabel("Carpeta raíz")
+        root_label.setObjectName("FieldLabel")
+        root_grid.addWidget(root_label, 0, 0)
 
         self.root_input = QLineEdit()
-        self.root_input.setPlaceholderText("Carpeta raíz de clientes")
-        layout.addWidget(self.root_input, 2, 0, 1, 2)
+        self.root_input.setPlaceholderText("Ruta principal de clientes")
+        root_grid.addWidget(self.root_input, 1, 0, 1, 3)
 
-        browse_button = QPushButton("Examinar")
+        browse_button = QPushButton("Explorar")
         browse_button.clicked.connect(self.select_root_folder)
-        layout.addWidget(browse_button, 2, 2)
+        root_grid.addWidget(browse_button, 1, 3)
 
-        scan_button = QPushButton("Escanear")
-        scan_button.setObjectName("AccentButton")
+        scan_button = QPushButton("Cargar clientes")
+        scan_button.setObjectName("PrimaryButton")
         scan_button.clicked.connect(self.scan_clients)
-        layout.addWidget(scan_button, 2, 3)
+        root_grid.addWidget(scan_button, 1, 4)
+        layout.addLayout(root_grid)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(10)
 
         mark_all = QPushButton("Marcar todos")
         mark_all.clicked.connect(self.mark_all)
-        layout.addWidget(mark_all, 3, 0)
+        actions.addWidget(mark_all)
 
-        unmark_all = QPushButton("Desmarcar todos")
+        unmark_all = QPushButton("Desmarcar")
         unmark_all.clicked.connect(self.unmark_all)
-        layout.addWidget(unmark_all, 3, 1)
+        actions.addWidget(unmark_all)
 
-        only_pending = QPushButton("Solo carpetas con _")
+        only_pending = QPushButton("Marcar solo con _")
         only_pending.clicked.connect(self.mark_only_pending_marker)
-        layout.addWidget(only_pending, 3, 2)
+        actions.addWidget(only_pending)
+
+        refresh = QPushButton("Refrescar")
+        refresh.clicked.connect(self.scan_clients)
+        actions.addWidget(refresh)
 
         self.process_button = QPushButton("Procesar seleccionados")
-        self.process_button.setObjectName("PrimaryButton")
+        self.process_button.setObjectName("AccentButton")
         self.process_button.clicked.connect(self.start_processing)
-        layout.addWidget(self.process_button, 3, 3)
+        actions.addWidget(self.process_button)
+        layout.addLayout(actions)
 
-        layout.setColumnStretch(0, 1)
-        layout.setColumnStretch(1, 1)
-        return card
+        options_grid = QGridLayout()
+        options_grid.setHorizontalSpacing(14)
+        options_grid.setVerticalSpacing(10)
 
-    def _build_progress_card(self) -> QWidget:
-        card = QFrame()
-        card.setObjectName("PanelCard")
-        layout = QGridLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setHorizontalSpacing(14)
+        options_title = QLabel("Opciones del proceso")
+        options_title.setObjectName("SectionTitle")
+        options_grid.addWidget(options_title, 0, 0, 1, 2)
 
-        title = QLabel("Seguimiento")
-        title.setObjectName("SectionTitle")
-        layout.addWidget(title, 0, 0, 1, 2)
+        self.move_files_checkbox = QCheckBox("Mover archivos en lugar de copiar")
+        self.move_files_checkbox.setChecked(True)
+        options_grid.addWidget(self.move_files_checkbox, 1, 0)
 
-        self.general_status = QLabel("General: listo")
-        self.general_status.setObjectName("MutedLabel")
-        layout.addWidget(self.general_status, 1, 0)
+        self.modified_date_checkbox = QCheckBox("Usar fecha de modificación como fallback")
+        self.modified_date_checkbox.setChecked(True)
+        options_grid.addWidget(self.modified_date_checkbox, 1, 1)
 
-        self.client_status = QLabel("Cliente actual: -")
-        self.client_status.setObjectName("MutedLabel")
-        layout.addWidget(self.client_status, 1, 1)
+        self.auto_select_checkbox = QCheckBox("Seleccionar automáticamente carpetas con '_'")
+        self.auto_select_checkbox.setChecked(True)
+        self.auto_select_checkbox.stateChanged.connect(self.refresh_client_tree)
+        options_grid.addWidget(self.auto_select_checkbox, 2, 0)
 
-        self.general_progress = QProgressBar()
-        layout.addWidget(self.general_progress, 2, 0)
-
-        self.client_progress = QProgressBar()
-        layout.addWidget(self.client_progress, 2, 1)
+        self.remove_marker_checkbox = QCheckBox("Quitar '_' del nombre al finalizar")
+        self.remove_marker_checkbox.setChecked(True)
+        options_grid.addWidget(self.remove_marker_checkbox, 2, 1)
+        layout.addLayout(options_grid)
         return card
 
     def _build_clients_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("PanelCard")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
 
-        header = QLabel("Clientes detectados")
-        header.setObjectName("SectionTitle")
-        layout.addWidget(header)
-
-        self.only_marker_checkbox = QCheckBox("Mostrar solo carpetas con '_'")
+        top_row = QHBoxLayout()
+        title = QLabel("Módulo de clientes")
+        title.setObjectName("SectionTitle")
+        top_row.addWidget(title)
+        top_row.addStretch(1)
+        self.only_marker_checkbox = QCheckBox("Solo carpetas con '_'")
         self.only_marker_checkbox.stateChanged.connect(self.refresh_client_tree)
-        layout.addWidget(self.only_marker_checkbox)
+        top_row.addWidget(self.only_marker_checkbox)
+        layout.addLayout(top_row)
+
+        subtitle = QLabel(
+            "Vista operativa de clientes, pendientes y estado del lote. La selección se refleja directamente en el estado."
+        )
+        subtitle.setObjectName("MutedLabel")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
 
         self.client_tree = QTreeWidget()
-        self.client_tree.setHeaderLabels(["Procesar", "Cliente", "Pendiente", "Estado", "Ruta"])
+        self.client_tree.setHeaderLabels(["Sel.", "Cliente", "Pendientes", "Estado", "Ruta"])
+        self.client_tree.setAlternatingRowColors(True)
+        self.client_tree.setRootIsDecorated(False)
         self.client_tree.itemChanged.connect(self._handle_item_changed)
+        self.client_tree.setUniformRowHeights(True)
+        self.client_tree.setColumnWidth(0, 60)
+        self.client_tree.setColumnWidth(1, 260)
+        self.client_tree.setColumnWidth(2, 90)
+        self.client_tree.setColumnWidth(3, 130)
         layout.addWidget(self.client_tree, 1)
         return panel
+
+    def _build_execution_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+        layout.addWidget(self._build_progress_panel())
+        layout.addWidget(self._build_log_panel(), 1)
+        return panel
+
+    def _build_progress_panel(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("PanelCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("Seguimiento de ejecución")
+        title.setObjectName("SectionTitle")
+        layout.addWidget(title)
+
+        self.general_status = QLabel("Lote general: listo")
+        self.general_status.setObjectName("MutedLabel")
+        layout.addWidget(self.general_status)
+
+        self.general_progress = QProgressBar()
+        layout.addWidget(self.general_progress)
+
+        self.client_status = QLabel("Cliente actual: -")
+        self.client_status.setObjectName("MutedLabel")
+        layout.addWidget(self.client_status)
+
+        self.client_progress = QProgressBar()
+        layout.addWidget(self.client_progress)
+
+        summary_grid = QGridLayout()
+        summary_grid.setHorizontalSpacing(14)
+        summary_grid.setVerticalSpacing(10)
+        self.run_processed = self._build_inline_metric("Procesados", "0")
+        self.run_errors = self._build_inline_metric("Errores", "0")
+        self.run_reviews = self._build_inline_metric("Revisión manual", "0")
+        self.run_last = self._build_inline_metric("Última actividad", "-")
+        cards = (self.run_processed, self.run_errors, self.run_reviews, self.run_last)
+        for index, metric in enumerate(cards):
+            summary_grid.addWidget(metric["frame"], index // 2, index % 2)
+        layout.addLayout(summary_grid)
+        return card
+
+    def _build_inline_metric(self, title: str, value: str) -> dict[str, QWidget]:
+        frame = QFrame()
+        frame.setObjectName("InlineMetricCard")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(2)
+        title_label = QLabel(title)
+        title_label.setObjectName("MiniMetricTitle")
+        value_label = QLabel(value)
+        value_label.setObjectName("MiniMetricValue")
+        layout.addWidget(title_label)
+        layout.addWidget(value_label)
+        return {"frame": frame, "value": value_label}
 
     def _build_log_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("PanelCard")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
 
         top_row = QHBoxLayout()
-        header = QLabel("Log de proceso")
-        header.setObjectName("SectionTitle")
-        top_row.addWidget(header)
+        title = QLabel("Actividad reciente y log")
+        title.setObjectName("SectionTitle")
+        top_row.addWidget(title)
         top_row.addStretch(1)
-
         export_button = QPushButton("Exportar log")
         export_button.clicked.connect(self.export_log)
         top_row.addWidget(export_button)
         layout.addLayout(top_row)
+
+        helper = QLabel(
+            "Se registran decisiones de fecha, incidencias por archivo y resumen de fin de ejecución."
+        )
+        helper.setObjectName("MutedLabel")
+        helper.setWordWrap(True)
+        layout.addWidget(helper)
 
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
@@ -343,6 +417,7 @@ class MainWindow(QMainWindow):
     def append_log(self, message: str) -> None:
         line = self.log_buffer.add(message)
         self.log_output.appendPlainText(line)
+        self.run_last["value"].setText(datetime.now().strftime("%H:%M:%S"))
 
     def select_root_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Selecciona la carpeta raíz de clientes")
@@ -360,9 +435,13 @@ class MainWindow(QMainWindow):
             return
 
         self.scan_results = self.folder_service.scan_clients(root_path)
+        self.client_states = {
+            str(result.path): ("pending" if result.pending_count else "idle")
+            for result in self.scan_results
+        }
         self.refresh_client_tree()
         self.append_log(f"Carpetas cargadas: {len(self.scan_results)}")
-        self.summary_status.setText("Estado: clientes escaneados")
+        self._set_summary_badge("Clientes escaneados", "neutral")
 
     def refresh_client_tree(self) -> None:
         self.client_tree.blockSignals(True)
@@ -375,33 +454,62 @@ class MainWindow(QMainWindow):
             if show_only_marker and not scan_result.pending_marker:
                 continue
 
+            path_key = str(scan_result.path)
+            default_state = self.client_states.get(path_key, "pending" if scan_result.pending_count else "idle")
             item = QTreeWidgetItem(self.client_tree)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-            item.setCheckState(0, Qt.Checked if auto_select_marker and scan_result.pending_marker else Qt.Unchecked)
+            checked = auto_select_marker and scan_result.pending_marker and default_state not in {"processed", "error"}
+            if self.client_states.get(path_key) == "selected":
+                checked = True
+            item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
             item.setText(1, scan_result.path.name)
             item.setText(2, str(scan_result.pending_count))
-            item.setText(3, STATUS_LABELS["pending"] if scan_result.pending_count else "Sin pendientes")
             item.setText(4, str(scan_result.path))
-            item.setData(0, Qt.UserRole, str(scan_result.path))
-            self._apply_status_color(item, "pending" if scan_result.pending_count else "processed")
-            self.client_item_map[str(scan_result.path)] = item
+            item.setData(0, Qt.UserRole, path_key)
+            self.client_item_map[path_key] = item
+            state = self._derive_state(path_key, scan_result.pending_count, item.checkState(0) == Qt.Checked)
+            self.client_states[path_key] = state
+            self._apply_status_visuals(item, state)
 
-        self.client_tree.resizeColumnToContents(0)
-        self.client_tree.resizeColumnToContents(1)
-        self.client_tree.resizeColumnToContents(2)
-        self.client_tree.resizeColumnToContents(3)
         self.client_tree.blockSignals(False)
         self._update_summary_labels()
 
-    def _handle_item_changed(self, _item: QTreeWidgetItem, _column: int) -> None:
+    def _derive_state(self, path_key: str, pending_count: int, is_checked: bool) -> str:
+        current = self.client_states.get(path_key)
+        if current in {"processing", "processed", "error"}:
+            return current
+        if pending_count == 0:
+            return "idle"
+        return "selected" if is_checked else "pending"
+
+    def _handle_item_changed(self, item: QTreeWidgetItem, _column: int) -> None:
+        path_key = item.data(0, Qt.UserRole)
+        if not path_key:
+            return
+        pending_count = int(item.text(2) or "0")
+        state = self._derive_state(path_key, pending_count, item.checkState(0) == Qt.Checked)
+        self.client_states[path_key] = state
+        self._apply_status_visuals(item, state)
         self._update_summary_labels()
 
     def _update_summary_labels(self) -> None:
         selected = self.get_selected_client_paths()
         pending_total = sum(result.pending_count for result in self.scan_results)
-        self.summary_clients.setText(f"Clientes cargados: {len(self.scan_results)}")
-        self.summary_pending.setText(f"Pendientes: {pending_total}")
-        self.summary_selected.setText(f"Seleccionados: {len(selected)}")
+        self.metric_clients["value"].setText(str(len(self.scan_results)))
+        self.metric_pending["value"].setText(str(pending_total))
+        self.metric_selected["value"].setText(str(len(selected)))
+
+    def _set_summary_badge(self, text: str, tone: str) -> None:
+        object_name = {
+            "neutral": "StatusBadgeNeutral",
+            "processing": "StatusBadgeInfo",
+            "success": "StatusBadgeSuccess",
+            "error": "StatusBadgeError",
+        }.get(tone, "StatusBadgeNeutral")
+        self.summary_status.setObjectName(object_name)
+        self.summary_status.setText(text)
+        self.summary_status.style().unpolish(self.summary_status)
+        self.summary_status.style().polish(self.summary_status)
 
     def get_selected_client_paths(self) -> list[Path]:
         selected_paths: list[Path] = []
@@ -444,9 +552,13 @@ class MainWindow(QMainWindow):
         self.process_button.setEnabled(False)
         self.general_progress.setValue(0)
         self.client_progress.setValue(0)
-        self.general_status.setText("General: preparando proceso")
+        self.general_status.setText("Lote general: preparando proceso")
         self.client_status.setText("Cliente actual: -")
-        self.summary_status.setText("Estado: en proceso")
+        self.run_processed["value"].setText("0")
+        self.run_errors["value"].setText("0")
+        self.run_reviews["value"].setText("0")
+        self.metric_manual["value"].setText("0")
+        self._set_summary_badge("En ejecución", "processing")
         self.append_log("=== INICIO DEL PROCESO ===")
 
         self.worker = ProcessingWorker(
@@ -465,15 +577,16 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
         for path in selected_paths:
-            item = self.client_item_map.get(str(path))
+            path_key = str(path)
+            self.client_states[path_key] = "processing"
+            item = self.client_item_map.get(path_key)
             if item:
-                item.setText(3, STATUS_LABELS["processing"])
-                self._apply_status_color(item, "processing")
+                self._apply_status_visuals(item, "processing")
 
     def _update_global_progress(self, current: int, maximum: int) -> None:
         self.general_progress.setMaximum(maximum)
         self.general_progress.setValue(current)
-        self.general_status.setText(f"General: {current}/{maximum} archivos")
+        self.general_status.setText(f"Lote general: {current}/{maximum} archivos")
 
     def _update_client_progress(self, client_name: str, current: int, total: int) -> None:
         self.client_progress.setMaximum(max(total, 1))
@@ -481,29 +594,38 @@ class MainWindow(QMainWindow):
         self.client_status.setText(f"Cliente actual: {client_name} ({current}/{total})")
 
     def _handle_client_finished(self, result: ClientProcessResult) -> None:
-        old_item = self.client_item_map.get(str(result.original_path))
-        if old_item:
-            old_item.setText(1, result.final_client_path.name)
-            old_item.setText(2, "0")
-            old_item.setText(4, str(result.final_client_path))
-            if result.error_count:
-                old_item.setText(3, STATUS_LABELS["error"])
-                self._apply_status_color(old_item, "error")
-            else:
-                old_item.setText(3, STATUS_LABELS["processed"])
-                self._apply_status_color(old_item, "processed")
-            if str(result.original_path) != str(result.final_client_path):
-                self.client_item_map.pop(str(result.original_path), None)
-                self.client_item_map[str(result.final_client_path)] = old_item
+        old_key = str(result.original_path)
+        new_key = str(result.final_client_path)
+        item = self.client_item_map.get(old_key)
+        if item:
+            item.setText(1, result.final_client_path.name)
+            item.setText(2, "0")
+            item.setText(4, str(result.final_client_path))
+            state = "error" if result.error_count else "processed"
+            self.client_states.pop(old_key, None)
+            self.client_states[new_key] = state
+            if old_key != new_key:
+                self.client_item_map.pop(old_key, None)
+                self.client_item_map[new_key] = item
+                item.setData(0, Qt.UserRole, new_key)
+            self._apply_status_visuals(item, state)
+
+        manual_reviews = sum(1 for doc in result.processed_documents if doc.requires_manual_review)
+        self.run_processed["value"].setText(str(int(self.run_processed["value"].text()) + result.processed_count))
+        self.run_errors["value"].setText(str(int(self.run_errors["value"].text()) + result.error_count))
+        self.run_reviews["value"].setText(str(int(self.run_reviews["value"].text()) + manual_reviews))
+        self.metric_manual["value"].setText(self.run_reviews["value"].text())
+
         self.append_log(
-            f"Cliente finalizado: {result.final_client_path.name} | procesados={result.processed_count} | errores={result.error_count}"
+            f"Cliente finalizado: {result.final_client_path.name} | procesados={result.processed_count} | "
+            f"errores={result.error_count} | revision={manual_reviews}"
         )
         self._update_summary_labels()
 
     def _handle_processing_finished(self, processed_total: int, total_files: int, error_total: int) -> None:
         self.process_button.setEnabled(True)
-        self.summary_status.setText("Estado: finalizado")
-        self.general_status.setText(f"General: finalizado ({processed_total}/{total_files})")
+        self._set_summary_badge("Finalizado", "success")
+        self.general_status.setText(f"Lote general: finalizado ({processed_total}/{total_files})")
         self.client_status.setText("Cliente actual: completado")
         self.append_log("=== PROCESO FINALIZADO ===")
         self.append_log(f"Total procesados: {processed_total}")
@@ -517,19 +639,24 @@ class MainWindow(QMainWindow):
 
     def _handle_processing_failed(self, error_message: str) -> None:
         self.process_button.setEnabled(True)
-        self.summary_status.setText("Estado: error general")
+        self._set_summary_badge("Error general", "error")
         self.append_log(f"[ERROR GENERAL] {error_message}")
         QMessageBox.critical(self, "Error", error_message)
 
-    def _apply_status_color(self, item: QTreeWidgetItem, status: str) -> None:
+    def _apply_status_visuals(self, item: QTreeWidgetItem, status: str) -> None:
         palette = {
-            "pending": QColor(THEME.colors["pending"]),
-            "processing": QColor(THEME.colors["processing"]),
-            "processed": QColor(THEME.colors["processed"]),
-            "error": QColor(THEME.colors["error"]),
+            "pending": (THEME.colors["pending"], THEME.colors["pending_soft"]),
+            "selected": (THEME.colors["selected"], THEME.colors["selected_soft"]),
+            "processing": (THEME.colors["processing"], THEME.colors["processing_soft"]),
+            "processed": (THEME.colors["processed"], THEME.colors["processed_soft"]),
+            "error": (THEME.colors["error"], THEME.colors["error_soft"]),
+            "idle": (THEME.colors["muted"], THEME.colors["surface_alt"]),
         }
-        color = palette.get(status, QColor(THEME.colors["text"]))
-        item.setForeground(3, color)
+        text_color, background = palette.get(status, (THEME.colors["text"], THEME.colors["surface_alt"]))
+        item.setText(3, BASE_STATUS_LABELS.get(status, status.title()))
+        item.setForeground(3, QColor(text_color))
+        item.setBackground(3, QColor(background))
+        item.setForeground(2, QColor(THEME.colors["text"]))
 
     def export_log(self) -> None:
         if not self.log_buffer.lines:

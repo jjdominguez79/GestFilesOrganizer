@@ -29,6 +29,13 @@ class ProcessedDocument:
     file_type: str
     detection_method: str
     detected_date: Optional[datetime]
+    detection_confidence: str
+    detection_label: str
+    detection_context: str
+    detection_zone: str
+    detection_page: Optional[int]
+    detection_decision: str
+    requires_manual_review: bool
     assigned_year: str
     assigned_month: str
     status: str

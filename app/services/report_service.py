@@ -23,6 +23,13 @@ DETAIL_HEADERS = [
     "Tipo de archivo",
     "Método de detección de fecha",
     "Fecha detectada del documento",
+    "Confianza detección",
+    "Etiqueta asociada",
+    "Contexto detección",
+    "Zona documento",
+    "Página",
+    "Revisión manual",
+    "Motivo resumido de selección",
     "Año asignado",
     "Mes asignado",
     "Estado del procesamiento",
@@ -73,6 +80,7 @@ class ReportService:
             ("Total de archivos procesados", len(documents)),
             ("Total con fecha detectada", total_detected),
             ("Total sin fecha", detection_counter.get("SIN_FECHA", 0)),
+            ("Total revisión manual", sum(1 for doc in documents if doc.requires_manual_review)),
         ]
         for method, total in sorted(detection_counter.items()):
             rows.append((f"Total método {method}", total))
@@ -113,6 +121,13 @@ class ReportService:
                     document.file_type,
                     document.detection_method,
                     document.detected_date,
+                    document.detection_confidence,
+                    document.detection_label,
+                    document.detection_context,
+                    document.detection_zone,
+                    document.detection_page,
+                    "Sí" if document.requires_manual_review else "No",
+                    document.detection_decision,
                     document.assigned_year,
                     document.assigned_month,
                     document.status,
@@ -141,7 +156,7 @@ class ReportService:
         sheet.add_table(table)
 
         date_columns = {"A", "I"}
-        amount_columns = {"Q", "R", "S"}
+        amount_columns = {"X", "Y", "Z"}
         for column_cells in sheet.columns:
             letter = get_column_letter(column_cells[0].column)
             max_length = max(len(str(cell.value or "")) for cell in column_cells)

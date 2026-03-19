@@ -24,7 +24,7 @@ class DocumentProcessor:
         self.settings = settings
         self.folder_service = FolderService(settings)
         self.text_extractor = TextExtractor(settings)
-        self.date_extractor = DateExtractor(self.text_extractor)
+        self.date_extractor = DateExtractor(settings, self.text_extractor)
         self.invoice_parser = InvoiceParser()
         self.report_service = ReportService(settings)
         self.client_renamer = ClientRenamer()
@@ -94,8 +94,16 @@ class DocumentProcessor:
                 if log_callback:
                     log_callback(
                         f"[{index}/{total_candidates}] {record.original_name} -> {record.final_path} "
-                        f"({record.detection_method}; {record.status})"
+                        f"({record.detection_method}; {record.status}; confianza={record.detection_confidence})"
                     )
+                    if record.detection_decision:
+                        log_callback(
+                            f"    Fecha: {record.detected_date.strftime('%d/%m/%Y') if record.detected_date else 'N/D'} | "
+                            f"etiqueta={record.detection_label or 'sin etiqueta'} | "
+                            f"zona={record.detection_zone or 'desconocida'} | "
+                            f"pagina={record.detection_page or '-'} | "
+                            f"decision={record.detection_decision}"
+                        )
             except Exception as exc:
                 error_count += 1
                 if log_callback:
@@ -181,6 +189,13 @@ class DocumentProcessor:
             notes_parts.append(f"Campos inferidos: {', '.join(invoice_data.inferred_fields)}")
         else:
             notes_parts.append("No se pudieron inferir campos de factura.")
+        notes_parts.append(
+            f"Fecha={detection.date.strftime('%d/%m/%Y') if detection.date else 'N/D'} | "
+            f"confianza={detection.confidence} | etiqueta={detection.associated_label or 'sin etiqueta'} | "
+            f"zona={detection.document_zone or 'desconocida'}"
+        )
+        if detection.requires_manual_review:
+            notes_parts.append("Revisar fecha manualmente.")
 
         return ProcessedDocument(
             processed_at=datetime.now(),
@@ -192,6 +207,13 @@ class DocumentProcessor:
             file_type=file_path.suffix.lower().lstrip("."),
             detection_method=detection.method,
             detected_date=detection.date,
+            detection_confidence=detection.confidence,
+            detection_label=detection.associated_label,
+            detection_context=detection.context_text,
+            detection_zone=detection.document_zone,
+            detection_page=detection.page,
+            detection_decision=detection.decision_summary,
+            requires_manual_review=detection.requires_manual_review,
             assigned_year=year,
             assigned_month=year_month,
             status="Procesado",

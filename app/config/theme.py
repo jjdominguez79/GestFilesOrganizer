@@ -6,10 +6,10 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Theme:
     app_title: str = "GestFiles Organizer"
-    brand_name: str = "Gest2A3Eco"
+    brand_name: str = "Gestinem"
     brand_tagline: str = "Gestión documental de despacho"
-    window_min_width: int = 1360
-    window_min_height: int = 820
+    window_min_width: int = 1420
+    window_min_height: int = 860
     colors: dict[str, str] = None
     fonts: dict[str, int] = None
 
@@ -19,21 +19,28 @@ class Theme:
                 self,
                 "colors",
                 {
-                    "bg": "#EEF1F3",
+                    "bg": "#EEF2F6",
                     "surface": "#FFFFFF",
-                    "surface_alt": "#F4F7F8",
-                    "surface_dark": "#2D343B",
-                    "primary": "#5AA332",
-                    "primary_dark": "#3C7C1B",
-                    "accent": "#1F7A8C",
-                    "text": "#1F2B33",
-                    "muted": "#64737D",
-                    "border": "#CCD5DB",
-                    "brand_soft": "#DFF0D3",
-                    "pending": "#B58A00",
-                    "processing": "#1F7A8C",
-                    "processed": "#0D7C66",
-                    "error": "#A33A2B",
+                    "surface_alt": "#F5F8FB",
+                    "surface_dark": "#0F2741",
+                    "surface_deep": "#0A1A2E",
+                    "primary": "#1F4D7A",
+                    "primary_dark": "#163652",
+                    "primary_soft": "#DDE8F2",
+                    "accent": "#6E8EAA",
+                    "text": "#1A2733",
+                    "muted": "#667788",
+                    "border": "#D4DEE7",
+                    "pending": "#8C6A19",
+                    "pending_soft": "#F3E9C8",
+                    "selected": "#234E78",
+                    "selected_soft": "#DDE8F2",
+                    "processing": "#215F93",
+                    "processing_soft": "#D6E7F6",
+                    "processed": "#26634E",
+                    "processed_soft": "#D9ECE4",
+                    "error": "#A24034",
+                    "error_soft": "#F4DBD7",
                 },
             )
         if self.fonts is None:
@@ -53,84 +60,120 @@ def build_stylesheet(theme: Theme = THEME) -> str:
     QWidget {{
         background: {c['bg']};
         color: {c['text']};
-        font-family: 'Segoe UI', 'Calibri', sans-serif;
+        font-family: 'Segoe UI', 'Bahnschrift', 'Calibri', sans-serif;
         font-size: 10pt;
     }}
     QMainWindow {{
         background: {c['bg']};
     }}
-    QFrame#Sidebar,
-    QFrame#TopCard,
-    QFrame#PanelCard,
-    QFrame#SummaryCard {{
+    QFrame#HeroCard {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 {c['surface_deep']}, stop:0.55 {c['surface_dark']}, stop:1 {c['primary']});
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+    }}
+    QLabel#HeroLogo {{
+        background: rgba(255,255,255,0.95);
+        color: {c['surface_dark']};
+        border-radius: 16px;
+        font-size: 24pt;
+        font-weight: 800;
+    }}
+    QLabel#HeroEyebrow {{
+        color: rgba(255,255,255,0.74);
+        font-size: 9.5pt;
+        font-weight: 600;
+        text-transform: uppercase;
+    }}
+    QLabel#HeroTitle {{
+        color: white;
+        font-size: 22pt;
+        font-weight: 700;
+    }}
+    QLabel#HeroSubtitle {{
+        color: rgba(255,255,255,0.86);
+        font-size: 10.5pt;
+    }}
+    QLabel#HeroChip {{
+        background: rgba(255,255,255,0.12);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px;
+        padding: 6px 10px;
+        font-size: 9pt;
+        font-weight: 600;
+    }}
+    QFrame#HeroSideCard {{
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 14px;
+        min-width: 210px;
+    }}
+    QFrame#MetricCard,
+    QFrame#InlineMetricCard,
+    QFrame#PanelCard {{
         background: {c['surface']};
         border: 1px solid {c['border']};
-        border-radius: 14px;
+        border-radius: 16px;
     }}
-    QFrame#BrandBlock {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 {c['surface_dark']}, stop:1 {c['primary']});
-        border-radius: 18px;
-        color: white;
+    QLabel#MetricTitle,
+    QLabel#MiniMetricTitle,
+    QLabel#FieldLabel {{
+        color: {c['muted']};
+        font-size: 8.8pt;
+        font-weight: 600;
+        text-transform: uppercase;
     }}
-    QFrame#BrandInfoCard {{
-        background: rgba(255, 255, 255, 0.12);
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 12px;
-    }}
-    QLabel#BrandLogo {{
-        background: white;
-        border: none;
-        border-radius: 10px;
+    QLabel#MetricValue {{
         color: {c['primary_dark']};
-        font-size: 21pt;
+        font-size: 20pt;
         font-weight: 700;
-        padding: 8px 12px;
     }}
-    QLabel#BrandPill {{
-        background: {c['brand_soft']};
-        color: {c['primary_dark']};
-        border-radius: 10px;
-        padding: 4px 8px;
+    QLabel#MetricSubtitle {{
+        color: {c['muted']};
         font-size: 9pt;
-        font-weight: 700;
     }}
-    QLabel#Headline {{
-        font-size: 18pt;
-        font-weight: 700;
+    QLabel#MiniMetricValue {{
         color: {c['text']};
+        font-size: 12pt;
+        font-weight: 700;
     }}
     QLabel#SectionTitle {{
-        font-size: 11pt;
-        font-weight: 600;
+        font-size: 11.5pt;
+        font-weight: 700;
         color: {c['text']};
     }}
     QLabel#MutedLabel {{
         color: {c['muted']};
     }}
-    QLabel#BrandOwner {{
-        color: rgba(255,255,255,0.82);
+    QLabel#StatusBadgeNeutral,
+    QLabel#StatusBadgeInfo,
+    QLabel#StatusBadgeSuccess,
+    QLabel#StatusBadgeError {{
+        padding: 6px 10px;
+        border-radius: 11px;
         font-size: 9pt;
-        font-weight: 600;
-    }}
-    QLabel#BrandProduct {{
-        color: white;
-        font-size: 19pt;
         font-weight: 700;
     }}
-    QLabel#BrandTagline {{
-        color: rgba(255,255,255,0.88);
-        font-size: 10pt;
+    QLabel#StatusBadgeNeutral {{
+        background: {c['surface_alt']};
+        color: {c['muted']};
+        border: 1px solid {c['border']};
     }}
-    QLabel#InfoTitle {{
-        color: white;
-        font-size: 8.5pt;
-        font-weight: 700;
-        text-transform: uppercase;
+    QLabel#StatusBadgeInfo {{
+        background: {c['processing_soft']};
+        color: {c['processing']};
+        border: 1px solid {c['processing']};
     }}
-    QLabel#InfoValue {{
-        color: white;
-        font-size: 10pt;
+    QLabel#StatusBadgeSuccess {{
+        background: {c['processed_soft']};
+        color: {c['processed']};
+        border: 1px solid {c['processed']};
+    }}
+    QLabel#StatusBadgeError {{
+        background: {c['error_soft']};
+        color: {c['error']};
+        border: 1px solid {c['error']};
     }}
     QPushButton {{
         background: {c['surface_alt']};
@@ -141,6 +184,7 @@ def build_stylesheet(theme: Theme = THEME) -> str:
     }}
     QPushButton:hover {{
         border-color: {c['primary']};
+        background: #F9FBFD;
     }}
     QPushButton:disabled {{
         color: #8D9AA4;
@@ -156,18 +200,32 @@ def build_stylesheet(theme: Theme = THEME) -> str:
         background: {c['primary_dark']};
     }}
     QPushButton#AccentButton {{
-        background: {c['accent']};
+        background: {c['surface_dark']};
         color: white;
-        border-color: {c['accent']};
+        border-color: {c['surface_dark']};
     }}
-    QLineEdit, QTextEdit, QPlainTextEdit, QTreeWidget, QTableWidget, QComboBox {{
+    QPushButton#AccentButton:hover {{
+        background: {c['primary_dark']};
+    }}
+    QLineEdit, QPlainTextEdit, QTreeWidget {{
         background: {c['surface']};
         border: 1px solid {c['border']};
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 8px;
     }}
+    QLineEdit:focus, QPlainTextEdit:focus, QTreeWidget:focus {{
+        border: 1px solid {c['primary']};
+    }}
     QTreeWidget {{
+        alternate-background-color: {c['surface_alt']};
         padding: 6px;
+    }}
+    QTreeWidget::item {{
+        height: 34px;
+    }}
+    QTreeWidget::item:selected {{
+        background: {c['primary_soft']};
+        color: {c['text']};
     }}
     QHeaderView::section {{
         background: {c['surface_alt']};
@@ -175,14 +233,14 @@ def build_stylesheet(theme: Theme = THEME) -> str:
         border: none;
         border-bottom: 1px solid {c['border']};
         padding: 10px 8px;
-        font-weight: 600;
+        font-weight: 700;
     }}
     QProgressBar {{
         background: {c['surface_alt']};
         border: 1px solid {c['border']};
         border-radius: 8px;
         text-align: center;
-        min-height: 18px;
+        min-height: 20px;
     }}
     QProgressBar::chunk {{
         background-color: {c['primary']};
@@ -190,6 +248,7 @@ def build_stylesheet(theme: Theme = THEME) -> str:
     }}
     QCheckBox {{
         spacing: 8px;
+        color: {c['text']};
     }}
     QCheckBox::indicator {{
         width: 18px;
@@ -204,5 +263,9 @@ def build_stylesheet(theme: Theme = THEME) -> str:
         border: 1px solid {c['primary']};
         border-radius: 5px;
         background: {c['primary']};
+    }}
+    QSplitter::handle {{
+        background: transparent;
+        width: 8px;
     }}
     """
